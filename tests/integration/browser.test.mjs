@@ -218,6 +218,44 @@ test('real Chromium: correctness, persisted views, keyboard, phone and overlappi
       await page.locator('#rows button').first().click(); await detail(expected({service: ['Search']}).items[0]); await page.getByRole('button', {name: 'Close details'}).click(); await check({service: ['Search']});
       await page.setViewportSize({width: 1280, height: 900});
     });
+    await t.test('component UI: overview-first phone landing and browser-local triage keyboard return', async () => {
+      await page.setViewportSize({width: 375, height: 812});
+      await page.goto(`http://127.0.0.1:${port}/`); await check();
+      assert.equal(await page.locator('main').evaluate(main => [...main.children].sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0].id), 'overview');
+      for (const name of ['Service overview', 'Incident results', 'Personal triage', 'Search and controls']) {
+        const link = page.getByRole('navigation', {name: 'Explorer sections'}).getByRole('link', {name, exact: true});
+        await link.focus(); await link.press('Enter');
+        assert.equal(await page.evaluate(() => document.activeElement.id), { 'Service overview': 'overview', 'Incident results': 'results', 'Personal triage': 'triage', 'Search and controls': 'controls' }[name]);
+      }
+      // The independent base has no overview endpoint. Do not assert overview HTTP success.
+      await clear(); await check();
+      const ids = expected().items.slice(0, 2).map(row => row.id);
+      for (let index = 0; index < 2; index++) {
+        await page.locator('#rows button').nth(index).click(); await detail(expected().items[index]);
+        await page.getByRole('button', {name: 'Add to triage', exact: true}).click(); await page.keyboard.press('Escape');
+      }
+      assert.deepEqual(await page.locator('#triage-list button[data-incident]').evaluateAll(nodes => nodes.map(node => node.dataset.incident)), ids);
+      await page.locator('#rows button').first().click(); await detail(expected().items[0]);
+      await expect(page.getByRole('button', {name: 'Already in triage'})).toBeDisabled(); await page.keyboard.press('Escape');
+      const note = '<b>literal</b> & "punctuation", snow 雪';
+      await page.getByLabel(`Note for ${ids[0]}`, {exact: true}).fill(note);
+      await page.reload(); await check();
+      await expect(page.getByLabel(`Note for ${ids[0]}`, {exact: true})).toHaveValue(note);
+      assert.equal(await page.locator('#triage-list b').count(), 0);
+      const open = page.locator('#triage-list button[data-incident]').first();
+      await open.focus(); await open.press('Enter'); await detail(expected().items[0]);
+      await page.keyboard.press('Escape'); await expect(open).toBeFocused(); await check();
+      assert.notEqual(await open.evaluate(x => getComputedStyle(x).outlineStyle), 'none');
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      await page.getByRole('button', {name: `Remove ${ids[0]} from triage`, exact: true}).click();
+      assert.equal(await page.evaluate(id => JSON.parse(localStorage.getItem('incident-explorer.triage.v1')).some(entry => entry.id === id), ids[0]), false);
+      await page.evaluate(() => localStorage.setItem('incident-explorer.triage.v1', '{malformed'));
+      await page.reload(); await check(); await expect(page.locator('#triage-message')).toContainText('malformed');
+      await page.locator('#rows button').first().click(); await detail(expected().items[0]);
+      await page.getByRole('button', {name: 'Add to triage', exact: true}).click(); await page.keyboard.press('Escape');
+      await expect(page.locator('#triage-list button[data-incident]')).toHaveCount(1);
+      await page.setViewportSize({width: 1280, height: 900});
+    });
     await t.test('pending intent replacement, detail close/reselection, empty and genuine failure/retry', async () => {
       await clear(); await check(); await throttle(900);
       const previousSummary = await page.locator('#summary').textContent();

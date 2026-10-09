@@ -137,3 +137,54 @@ test('addresses normalize singleton ambiguity, real UTC dates, numbers and liter
   assert.deepEqual(addressIntent(queryParams(intent)), intent);
   assert.equal(transition(createState(), {type: 'intent', patch: {q: ''}}).resultOp.token, 0);
 });
+
+// Inputs below exercise the production overview state owner; they are not HTTP proof.
+test('overview replacement owns snapshot, error and cleanup through filters, recall and navigation', async () => {
+  const {overviewIdentity, overviewParams, isOverviewCurrent} = await import('../../public/state.js');
+  let s = transition(createState(), {type: 'overview:start'});
+  const data = {services: [{service: 'Billing', incidentCount: 8, unresolvedCount: 5, highSeverityCount: 2, averageResolutionHours: null}]};
+  s = transition(s, {type: 'overview:success', token: s.overviewOp.token, data});
+  assert.equal(s.overview.data, data); assert.equal(isOverviewCurrent(s), true);
+  const snapshot = s.overview;
+  for (const event of [{type: 'intent', patch: {q: 'new', service: ['Search'], from: '2026-04-01'}}, {type: 'restore', view: {q: 'saved', status: ['open']}}, {type: 'address', intent: {q: 'history', severity: ['critical'], page: 3}}]) {
+    s = transition(s, {type: 'overview:start'}); const old = s.overviewOp.token;
+    s = transition(s, event); assert.equal(s.overview, snapshot); assert.equal(isOverviewCurrent(s), false);
+    s = transition(s, {type: 'overview:start'});
+    for (const type of ['overview:success', 'overview:failure', 'overview:finish']) assert.equal(transition(s, {type, token: old, data, error: 'obsolete'}), s);
+    const failed = s.overviewOp.token;
+    s = transition(s, {type: 'overview:failure', token: failed, error: 'Current overview failed'});
+    assert.equal(announcement(s, 'overview'), 'Current overview failed'); assert.equal(s.overview, snapshot);
+    s = transition(s, {type: 'detail:select', id: 'INC-000001'}); s = transition(s, {type: 'detail:start'});
+    s = transition(s, {type: 'detail:failure', token: s.detail.token, error: 'Detail failed'});
+    assert.equal(announcement(s, 'overview'), 'Detail failed');
+    s = transition(s, {type: 'detail:close'}); s = transition(s, {type: 'export:start'});
+    s = transition(s, {type: 'export:failure', token: s.exportOp.token, error: 'Export failed'});
+    assert.equal(announcement(s, 'overview'), 'Current overview failed');
+    assert.equal(announcement(s, 'triage', 'Triage remains usable'), 'Triage remains usable');
+    const identity = overviewIdentity(s.intent);
+    s = transition(s, {type: 'overview:start'}); assert.equal(s.overviewOp.error, null);
+    assert.equal(overviewIdentity(s.intent), identity);
+    const params = overviewParams(s.intent); assert.equal(params.has('page'), false); assert.equal(params.has('sort'), false);
+    assert.equal(params.get('q'), s.intent.q);
+    assert.equal(transition(s, {type: 'overview:finish', token: failed}), s); assert.equal(s.overviewOp.pending, true);
+  }
+  s = transition(s, {type: 'overview:success', token: s.overviewOp.token, data: {services: []}});
+  assert.equal(isOverviewCurrent(s), true); assert.equal(announcement(s, 'overview'), '0 matching services.');
+});
+test('sort, direction, size and pagination retain overview identity and pending ownership', async () => {
+  const {overviewIdentity, isOverviewCurrent} = await import('../../public/state.js');
+  let s = result(createState());
+  s = transition(s, {type: 'overview:start'}); const token = s.overviewOp.token;
+  const identity = overviewIdentity(s.intent);
+  for (const patch of [{sort: 'severity'}, {direction: 'asc'}, {pageSize: 50}]) {
+    s = transition(s, {type: 'intent', patch});
+    assert.equal(s.overviewOp.token, token); assert.equal(s.overviewOp.pending, true); assert.equal(overviewIdentity(s.intent), identity);
+  }
+  s = result(s); s = transition(s, {type: 'page', delta: 1});
+  assert.equal(s.overviewOp.token, token);
+  const data = {services: [{service: 'Search', averageResolutionHours: 12}]};
+  s = transition(s, {type: 'overview:success', token, data});
+  assert.equal(s.overview.data, data); assert.equal(isOverviewCurrent(s), true);
+  s = transition(s, {type: 'address', intent: {...s.intent, page: 1}});
+  assert.equal(s.overview.data, data); assert.equal(isOverviewCurrent(s), true);
+});

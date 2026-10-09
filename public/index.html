@@ -10,8 +10,15 @@
 <body>
   <a class="skip-link" href="#results">Skip to incidents</a>
   <header class="masthead"><div><p class="eyebrow">Support intelligence · Fictional dataset</p><h1>Incident explorer</h1><p>Find the pattern. Understand the incident.</p></div><button id="export" type="button">Download CSV</button></header>
+  <nav class="section-nav" aria-label="Explorer sections"><a href="#overview">Service overview</a><a href="#results">Incident results</a><a href="#triage">Personal triage</a><a href="#controls">Search and controls</a></nav>
   <main>
-    <aside aria-label="Explorer controls">
+    <section id="overview" tabindex="-1" aria-labelledby="overview-title">
+      <p class="eyebrow">Across all matching incidents</p><h2 id="overview-title">Service overview</h2>
+      <p>Compare services by unresolved incidents, highest count first. Unresolved means open or in progress. High severity includes critical and high. Average resolution hours uses only resolved incidents, from opening to resolution; unavailable means none are resolved.</p>
+      <p id="overview-selection" class="muted"></p><p id="overview-freshness" class="muted"></p>
+      <div id="overview-message" class="operation-message"></div><div id="service-measures" class="service-measures"></div>
+    </section>
+    <aside id="controls" tabindex="-1" aria-label="Explorer controls">
       <form id="query-form">
         <h2>Explore incidents</h2>
         <label for="search">Search ID, title or description</label>
@@ -24,6 +31,7 @@
       </form>
       <section class="saved" aria-labelledby="saved-title"><h2 id="saved-title">Saved views</h2><form id="save-form"><label for="view-name">Name this view</label><input id="view-name" maxlength="80" required placeholder="e.g. Billing follow-up"><button type="submit" class="secondary">Save current view</button></form><p id="storage-message" role="status"></p><ul id="views"></ul></section>
     </aside>
+    <section id="triage" tabindex="-1" aria-labelledby="triage-title"><h2 id="triage-title">Personal triage</h2><p>Added order. Notes stay in this browser, separately from addresses and saved views.</p><p id="triage-message" role="status"></p><ul id="triage-list"></ul></section>
     <section id="results" tabindex="-1" aria-labelledby="result-title">
       <div class="section-heading"><div><p class="eyebrow">All matching incidents</p><h2 id="result-title">Results overview</h2></div><span id="freshness" class="muted"></span></div>
       <div id="active-filters" class="chips" aria-label="Active selections"></div>
