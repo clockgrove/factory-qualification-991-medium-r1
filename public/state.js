@@ -40,8 +40,20 @@ export function queryParams(intent, {pagination = true} = {}) {
 }
 const operation = token => ({token, pending: false, error: null});
 const emptyDetail = token => ({...operation(token), id: null, data: null});
+export function overviewIdentity(intent) {
+  const {q, service, status, severity, from, to} = normalizeIntent(intent);
+  return JSON.stringify({q, service, status, severity, from, to});
+}
+export function overviewParams(intent) {
+  const params = queryParams(intent, {pagination: false});
+  params.delete('sort'); params.delete('direction');
+  return params;
+}
+export function isOverviewCurrent(state) {
+  return !!state.overview && state.overview.identity === overviewIdentity(state.intent);
+}
 export function createState() {
-  return {intent: normalizeIntent(), result: null, resultOp: operation(0), detail: emptyDetail(0), exportOp: operation(0)};
+  return {intent: normalizeIntent(), overview: null, overviewOp: operation(0), result: null, resultOp: operation(0), detail: emptyDetail(0), exportOp: operation(0)};
 }
 export function isResultCurrent(state) {
   return !!state.result && JSON.stringify(state.intent) === JSON.stringify(state.result.intent);
@@ -51,7 +63,8 @@ export function canPaginate(state) {
 }
 function changeIntent(state, intent, force = true) {
   if (!force && JSON.stringify(intent) === JSON.stringify(state.intent)) return state;
-  return {...state, intent, resultOp: operation(state.resultOp.token + 1), detail: emptyDetail(state.detail.token + 1), exportOp: operation(state.exportOp.token + 1)};
+  const changedOverview = overviewIdentity(intent) !== overviewIdentity(state.intent);
+  return {...state, intent, overviewOp: changedOverview ? operation(state.overviewOp.token + 1) : state.overviewOp, resultOp: operation(state.resultOp.token + 1), detail: emptyDetail(state.detail.token + 1), exportOp: operation(state.exportOp.token + 1)};
 }
 export function transition(state, event) {
   switch (event.type) {
@@ -63,6 +76,14 @@ export function transition(state, event) {
       const page = Math.max(1, Math.min(state.result.data.totalPages, state.intent.page + event.delta));
       return page === state.intent.page ? state : changeIntent(state, {...state.intent, page});
     }
+    case 'overview:start': return {...state, overviewOp: {...operation(state.overviewOp.token + 1), pending: true}};
+    case 'overview:success':
+    case 'overview:failure':
+      if (event.token !== state.overviewOp.token || !state.overviewOp.pending) return state;
+      return {...state, overview: event.type === 'overview:success' ? {identity: overviewIdentity(state.intent), intent: state.intent, data: event.data} : state.overview, overviewOp: {...operation(event.token), error: event.type === 'overview:failure' ? event.error : null}};
+    case 'overview:finish':
+      if (event.token !== state.overviewOp.token) return state;
+      return {...state, overviewOp: {...state.overviewOp, pending: false}};
     case 'result:start': return {...state, resultOp: {...operation(state.resultOp.token + 1), pending: true}};
     case 'result:success': {
       if (event.token !== state.resultOp.token || !state.resultOp.pending) return state;
@@ -98,8 +119,10 @@ export function transition(state, event) {
     default: return state;
   }
 }
-export function announcement(state) {
+export function announcement(state, context = 'results', triageMessage = '') {
   if (state.detail.id) return state.detail.error || (state.detail.pending ? 'Loading incident details.' : state.detail.data ? 'Incident details ready.' : '');
+  if (context === 'triage') return triageMessage || 'Personal triage list.';
+  if (context === 'overview') return state.overviewOp.error || (state.overviewOp.pending ? 'Loading service overview.' : isOverviewCurrent(state) ? `${state.overview.data.services.length} matching services.` : 'Overview unavailable for current selections.');
   if (state.resultOp.error) return state.resultOp.error;
   if (state.resultOp.pending) return state.result ? 'Loading results. Previous results are shown.' : 'Loading results.';
   if (state.exportOp.error) return state.exportOp.error;
