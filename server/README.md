@@ -20,6 +20,17 @@ Opened-date ties use ID ascending. Severity ties use openedAt descending,
 then ID ascending. Page requests clamp to the available range.
 Summaries cover all matches, with chronological UTC day buckets.
 
+`/api/overview` accepts the same parameters and validation as
+`/api/incidents`. Valid sort, direction, page and pageSize values do not
+affect its measures: every matching incident contributes, including those
+beyond the visible page. It returns `{services:[{service,incidentCount,
+unresolvedCount,highSeverityCount,averageResolutionHours}]}`.
+Only matching services appear, ordered by unresolved count descending,
+then service name ascending. Unresolved means open or in progress; high
+severity means critical or high. Average resolution hours is the mean of
+`(resolvedAt - openedAt) / 3600000` for resolved incidents only, or `null`
+when there are none. An empty result returns `{services:[]}`.
+
 `/api/incidents/:id` returns every incident field, or 404.
 `/api/export.csv` applies the same filters and sorting, ignores pagination,
 and exports all fields in dataset order. Tags are JSON array text, null is
